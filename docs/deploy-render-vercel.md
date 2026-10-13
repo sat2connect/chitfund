@@ -15,8 +15,8 @@ Browser ──HTTPS──► Vercel  (static React app, and a same-origin proxy 
 `*.vercel.app` and `*.onrender.com` are **different sites**. A session cookie from the backend would not be sent back by
 the browser on calls from the front end (it would need `SameSite=None` third-party cookies, which browsers increasingly
 block). So the front end calls **its own** `/api/...`, and Vercel forwards that to Render (`rewrites` in
-`frontend/vercel.json`). To the browser everything is one site and the cookie works. If you later use your own domain for
-both (for example `app.example.org` and `api.example.org`), you can drop the proxy.
+`frontend/vercel.json`). To the browser everything is one site and the cookie works. Keep the proxy even if you later add
+your own domains: the front end is built to call only the same origin.
 
 ## Before you start
 - The code is on GitHub (this repository) and both Render and Vercel are connected to your GitHub account.
@@ -62,7 +62,9 @@ migrations are pending, so a missed migration fails loudly rather than silently.
    (rewrite destinations cannot read environment variables). Commit and push.
 2. Vercel → **Add New → Project** → import the repository. Set **Root Directory** to `frontend` (framework preset Vite is
    detected; build `npm run build`, output `dist`).
-3. Add one environment variable: `VITE_API_BASE_URL` = `/api/v1` (relative, so calls go through the proxy).
+3. **Do not set `VITE_API_BASE_URL` on Vercel.** Production builds always call the same-origin `/api/v1`, which the
+   proxy in `vercel.json` forwards to Render. (A value pointing at another origin is ignored with a console warning:
+   the browser would block it and would not send the sign-in cookie.)
 4. Deploy. Copy the production URL.
 5. Go back to Render and make sure `CORS_ORIGINS` is **exactly** that URL (https, no trailing slash); redeploy the backend if
    you changed it. Only the production URL works: Vercel preview URLs are different origins and are refused by design.

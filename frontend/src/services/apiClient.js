@@ -1,4 +1,29 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000/api/v1';
+const DEV_DEFAULT = 'http://localhost:4000/api/v1';
+const PROD_DEFAULT = '/api/v1'; // same-origin: Vercel proxies /api/* to the backend, so the session cookie stays first-party
+
+/**
+ * Where the API lives.
+ *  - Development: VITE_API_BASE_URL, or the local backend.
+ *  - Production: always same-origin (/api/v1). A value pointing at another origin is ignored, because the browser would
+ *    block it (content-security policy) and would not send the sign-in cookie anyway.
+ */
+export const resolveBaseUrl = (configured, { prod, origin }) => {
+  const value = (configured ?? '').trim();
+  if (!prod) return value || DEV_DEFAULT;
+  if (!value) return PROD_DEFAULT;
+  try {
+    if (new URL(value, origin).origin === origin) return value;
+  } catch {
+    /* unparseable: fall through */
+  }
+  console.warn(`Ignoring VITE_API_BASE_URL="${value}" in production: it must be same-origin. Using ${PROD_DEFAULT}.`);
+  return PROD_DEFAULT;
+};
+
+const BASE_URL = resolveBaseUrl(import.meta.env.VITE_API_BASE_URL, {
+  prod: import.meta.env.PROD,
+  origin: typeof window === 'undefined' ? 'http://localhost' : window.location.origin,
+});
 
 export class ApiError extends Error {
   constructor(message, { status, code, requestId, details } = {}) {

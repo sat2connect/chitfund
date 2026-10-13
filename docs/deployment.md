@@ -45,14 +45,16 @@ is independent of those choices. Items marked **(decide)** need a business decis
 In production the server **refuses to start** if: simulated sign-in is enabled, `DATABASE_URL` is missing, the
 encryption key is malformed, CORS is `*` or not https, or secure cookies are disabled. It lists every problem at once.
 
-Front end (build time): `VITE_API_BASE_URL=https://api.example.org/api/v1`. Never put secrets in front-end variables.
+Front end: production builds call the **same origin** at `/api/v1` and need no variable (`VITE_API_BASE_URL` is for local
+development only; a cross-origin value is ignored in production). Make your static host or reverse proxy forward `/api/*`
+to the backend. Never put secrets in front-end variables.
 
 ## 4. First deployment
 
 ```bash
 # 1. build
 cd backend  && npm ci && npm run build
-cd ../frontend && npm ci && VITE_API_BASE_URL=https://api.example.org/api/v1 npm run build
+cd ../frontend && npm ci && npm run build
 
 # 2. create the schema (a deliberate step; the server will not start with pending migrations)
 cd ../backend && DATABASE_URL=... node dist/cli/migrate.js

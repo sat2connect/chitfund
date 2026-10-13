@@ -1,0 +1,55 @@
+# Render Blueprint for the backend. The PostgreSQL database is created separately in the Render dashboard
+# (choose a PAID plan with backups for real data) and its INTERNAL connection string is pasted into DATABASE_URL.
+# Values marked "sync: false" are asked for when the Blueprint is created and are never stored in this file.
+services:
+  - type: web
+    name: chitfund-backend
+    runtime: node
+    rootDir: backend
+    # Use a paid instance: free instances sleep when idle and a money system must answer promptly.
+    plan: starter
+    # devDependencies are needed to compile the TypeScript.
+    buildCommand: npm ci --include=dev && npm run build
+    # Applies pending SQL migrations before the new version starts. The server refuses to run with pending migrations.
+    preDeployCommand: node dist/cli/migrate.js
+    startCommand: node dist/server.js
+    healthCheckPath: /api/v1/health
+    # ONE instance only: the backend holds the database's single-writer lock. Do not enable autoscaling.
+    numInstances: 1
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_MODE
+        value: session
+      # Internal connection string of the Render PostgreSQL database.
+      - key: DATABASE_URL
+        sync: false
+      # Render's private-network connection does not use TLS. Set to "true" if you use the external URL instead.
+      - key: DATABASE_SSL
+        value: "false"
+      # 64 hex characters. Generate:  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      # Back it up separately from database backups.
+      - key: AUTH_ENCRYPTION_KEY
+        sync: false
+      # The https URL of the Vercel app, e.g. https://chitfund.vercel.app (no trailing slash).
+      - key: CORS_ORIGINS
+        sync: false
+      # Hops in front of the app (Vercel proxy + Render's load balancer), used for client IPs in rate limiting and sessions.
+      - key: TRUST_PROXY
+        value: "2"
+      # ---- first start only (see docs/deploy-render-vercel.md). Set PROVISION_ON_START=true, fill the three values,
+      # deploy once, then DELETE BOOTSTRAP_ADMIN_PASSWORD and set PROVISION_ON_START back to false.
+      - key: PROVISION_ON_START
+        value: "false"
+      - key: BOOTSTRAP_ADMIN_NAME
+        sync: false
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      # The accountant-approved reference data as one line of JSON (same content as docs/pilot-config.example.json).
+      - key: PILOT_CONFIG_JSON
+        sync: false

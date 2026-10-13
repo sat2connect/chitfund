@@ -32,6 +32,7 @@ Then open the front end and sign in. Copy `.env.example` to `.env` in each folde
 Checks: `npm test`, `npm run typecheck`, `npm run build` in `backend/`; `npm test`, `npm run build` in `frontend/`.
 
 ## Documentation
+- `docs/deploy-render-vercel.md` — step-by-step deployment of the backend on Render and the front end on Vercel
 - `docs/deployment.md` — how to deploy, configuration, first-run steps, upgrades, monitoring
 - `docs/persistence.md` — how data is saved, what the database enforces, limits and the scale-out path
 - `docs/backup-recovery.md` — what to back up, the restore drill, what was and was not verified

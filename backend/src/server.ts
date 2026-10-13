@@ -1,11 +1,14 @@
+import http from 'node:http';
 import { AuthService, defaultAuthSettings } from './auth/authService.js';
 import { createApp } from './app.js';
 import { loadConfig } from './config/index.js';
 import { createPgDb } from './db/pgDb.js';
-import { migrate, pendingMigrations } from './db/migrate.js';
+import { pendingMigrations } from './db/migrate.js';
+import { migrate } from './db/migrate.js';
 import { PersistentStore } from './persistence/persistentStore.js';
 import { createEmptyStore } from './repositories/store.js';
 import { seedDemoData } from './seed/crmSeed.js';
+import { acquireWriterLockWithRetry, createStartupGate, provisionOnStart } from './startup.js';
 
 /** Arbitrary constant: only one backend process may hold this lock and write. */
 const WRITER_LOCK_KEY = 727_001;
@@ -21,9 +24,14 @@ async function main() {
     return;
   }
 
+  // Listen straight away so the platform's health check passes while this instance waits for the previous one to finish.
+  const gate = createStartupGate();
+  const server = http.createServer(gate.handler);
+  server.listen(cfg.port, () => console.log(`Listening on port ${cfg.port}; starting up (${cfg.env}, ${cfg.authMode} auth, PostgreSQL)`));
+
   const db = createPgDb({ connectionString: cfg.databaseUrl, ssl: cfg.databaseSsl, max: cfg.databasePoolMax });
-  if (!(await db.acquireWriterLock(WRITER_LOCK_KEY))) {
-    console.error('Another backend process already holds the writer lock for this database. Refusing to start.');
+  if (!(await acquireWriterLockWithRetry(db, WRITER_LOCK_KEY))) {
+    console.error('Another backend process still holds the writer lock after waiting. Refusing to start.');
     process.exit(1);
   }
 
@@ -33,7 +41,7 @@ async function main() {
   }
   const pending = await pendingMigrations(db);
   if (pending.length) {
-    console.error(`Database schema is out of date (pending: ${pending.join(', ')}). Run "npm run migrate" first.`);
+    console.error(`Database schema is out of date (pending: ${pending.join(', ')}). Run the migrate command first.`);
     process.exit(1);
   }
 
@@ -45,17 +53,18 @@ async function main() {
     await persistence.commit();
     console.log('Seeded demo data into an empty database (SEED_DEMO=true).');
   }
+  await provisionOnStart(persistence, store, process.env);
 
   const auth = cfg.authMode === 'session' ? new AuthService(db, store, defaultAuthSettings(cfg.authEncryptionKey!, { sessionIdleMs: cfg.sessionIdleMs, sessionAbsoluteMs: cfg.sessionAbsoluteMs })) : undefined;
-  const app = createApp(store, { persistence, auth, config: cfg });
-  const server = app.listen(cfg.port, () => console.log(`Backend listening on port ${cfg.port} (${cfg.env}, ${cfg.authMode} auth, PostgreSQL)`));
+  gate.ready(createApp(store, { persistence, auth, config: cfg }));
+  console.log('Ready.');
 
   const shutdown = (signal: string) => {
-    console.log(`${signal} received: finishing in-flight requests and closing.`);
+    console.log(`${signal} received: finishing in-flight requests, then releasing the database.`);
     server.close(() => {
       db.close().finally(() => process.exit(0));
     });
-    setTimeout(() => process.exit(1), 15_000).unref();
+    setTimeout(() => process.exit(1), 20_000).unref();
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));

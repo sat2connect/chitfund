@@ -1,0 +1,19 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --color-brand-50: #eef6f4;
+  --color-brand-100: #d5e9e4;
+  --color-brand-600: #0f766e;
+  --color-brand-700: #0b5f58;
+  --color-brand-900: #073b37;
+  --color-ink: #0f172a;
+  --color-muted: #475569;
+  --color-line: #e2e8f0;
+  --color-surface: #f8fafc;
+  --radius-card: 0.5rem;
+}
+
+body {
+  @apply bg-surface text-ink font-sans antialiased;
+}

@@ -1,0 +1,28 @@
+{
+  "accountantApproval": {
+    "approvedBy": "NAME OF THE ACCOUNTANT WHO APPROVED THIS CHART AND THESE POSTING RULES",
+    "approvedOn": "2026-01-01",
+    "reference": "Optional document reference"
+  },
+  "branches": [
+    { "id": "CHN", "name": "Chennai Central" },
+    { "id": "CBE", "name": "Coimbatore" }
+  ],
+  "accounts": [
+    { "code": "1010", "name": "Cash in hand", "type": "ASSET" },
+    { "code": "1020", "name": "Bank - collections", "type": "ASSET" },
+    { "code": "1030", "name": "Payment gateway clearing", "type": "ASSET" },
+    { "code": "2100", "name": "Chit subscription collections", "type": "LIABILITY" },
+    { "code": "2200", "name": "Prize payouts payable", "type": "LIABILITY" },
+    { "code": "4100", "name": "Commission income", "type": "INCOME" },
+    { "code": "5100", "name": "Operating expenses", "type": "EXPENSE" }
+  ],
+  "postingRules": {
+    "debitByMode": { "CASH": "1010", "CHEQUE": "1020", "UPI": "1020", "BANK_TRANSFER": "1020", "ONLINE_SIMULATED": "1030" },
+    "creditAccountCode": "2100",
+    "payoutDebitCode": "2200",
+    "payoutCreditByChannel": { "BANK_TRANSFER": "1020", "CHEQUE": "1020" }
+  },
+  "fiscalCalendar": { "startDate": "2026-04-01", "months": 12 },
+  "settings": { "graceDays": 0 }
+}

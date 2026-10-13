@@ -45,7 +45,7 @@ is independent of those choices. Items marked **(decide)** need a business decis
 In production the server **refuses to start** if: simulated sign-in is enabled, `DATABASE_URL` is missing, the
 encryption key is malformed, CORS is `*` or not https, or secure cookies are disabled. It lists every problem at once.
 
-Front end: production builds call the **same origin** at `/api/v1` and need no variable (`VITE_API_BASE_URL` is for local
+Front end: production builds call the **same origin** at `/api/v1` and need no variable (the `VITE` variable, or the older `VITE_API_BASE_URL`, is for local
 development only; a cross-origin value is ignored in production). Make your static host or reverse proxy forward `/api/*`
 to the backend. Never put secrets in front-end variables.
 

@@ -62,7 +62,7 @@ migrations are pending, so a missed migration fails loudly rather than silently.
    (rewrite destinations cannot read environment variables). Commit and push.
 2. Vercel → **Add New → Project** → import the repository. Set **Root Directory** to `frontend` (framework preset Vite is
    detected; build `npm run build`, output `dist`).
-3. **Do not set `VITE_API_BASE_URL` on Vercel.** Production builds always call the same-origin `/api/v1`, which the
+3. **Do not set the `VITE` (or `VITE_API_BASE_URL`) variable on Vercel.** Production builds always call the same-origin `/api/v1`, which the
    proxy in `vercel.json` forwards to Render. (A value pointing at another origin is ignored with a console warning:
    the browser would block it and would not send the sign-in cookie.)
 4. Deploy. Copy the production URL.

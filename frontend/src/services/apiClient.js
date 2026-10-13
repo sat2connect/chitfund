@@ -3,7 +3,7 @@ const PROD_DEFAULT = '/api/v1'; // same-origin: Vercel proxies /api/* to the bac
 
 /**
  * Where the API lives.
- *  - Development: VITE_API_BASE_URL, or the local backend.
+ *  - Development: the VITE variable (or the older VITE_API_BASE_URL), or the local backend.
  *  - Production: always same-origin (/api/v1). A value pointing at another origin is ignored, because the browser would
  *    block it (content-security policy) and would not send the sign-in cookie anyway.
  */
@@ -16,11 +16,11 @@ export const resolveBaseUrl = (configured, { prod, origin }) => {
   } catch {
     /* unparseable: fall through */
   }
-  console.warn(`Ignoring VITE_API_BASE_URL="${value}" in production: it must be same-origin. Using ${PROD_DEFAULT}.`);
+  console.warn(`Ignoring the API address (VITE)="${value}" in production: it must be same-origin. Using ${PROD_DEFAULT}.`);
   return PROD_DEFAULT;
 };
 
-const BASE_URL = resolveBaseUrl(import.meta.env.VITE_API_BASE_URL, {
+const BASE_URL = resolveBaseUrl(import.meta.env.VITE ?? import.meta.env.VITE_API_BASE_URL, {
   prod: import.meta.env.PROD,
   origin: typeof window === 'undefined' ? 'http://localhost' : window.location.origin,
 });

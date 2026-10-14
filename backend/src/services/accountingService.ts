@@ -158,17 +158,23 @@ export const createAccountingService = (s: Store, approvals: ApprovalService) =>
     }),
 
     // ---- Chart of accounts ----
-    listAccounts: () => ({ items: [...s.accounts].sort((a, b) => a.code.localeCompare(b.code)), placeholder: s.accounts.some((a) => a.placeholder) }),
+    listAccounts: () => ({
+      items: [...s.accounts].sort((a, b) => a.code.localeCompare(b.code)).map((a) => ({ ...a, parentCode: s.accounts.find((x) => x.id === a.parentId)?.code })),
+      placeholder: s.accounts.some((a) => a.placeholder),
+    }),
     createAccount(u: User, body: Body) {
       const c = new Check(body);
       const code = c.str('code', { required: true, pattern: /^\d{3,8}$/, msg: 'Use 3-8 digits' });
       const name = c.str('name', { required: true, min: 3, max: 100 });
       const type = c.oneOf('type', ACCOUNT_TYPES);
+      const parentCode = c.str('parentCode', { pattern: /^\d{3,8}$/, msg: 'Use 3-8 digits' });
       c.done();
       if (s.accounts.some((a) => a.code === code)) throw conflict('DUPLICATE_CODE', `Account code ${code} already exists`);
-      const a: Account = { id: s.nextId('ACC'), code: code!, name: name!, type: type!, active: true, placeholder: false };
+      const parent = parentCode ? s.accounts.find((a) => a.code === parentCode) : undefined;
+      if (parentCode && !parent) throw badRequest('Validation failed', { parentCode: 'Unknown parent account' });
+      const a: Account = { id: s.nextId('ACC'), code: code!, name: name!, type: type!, parentId: parent?.id, active: true, placeholder: false };
       s.accounts.push(a);
-      audit(s, u, 'account.create', 'account', a.id, { code });
+      audit(s, u, 'account.create', 'account', a.id, { code, parentCode });
       return a;
     },
     setAccountActive(u: User, id: string, active: boolean) {

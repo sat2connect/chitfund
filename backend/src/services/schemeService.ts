@@ -1,7 +1,7 @@
 import {
   AUCTION_MODES, INSTALMENT_FREQUENCIES, JURISDICTIONS, schemeVersionTransitions,
 } from '../domain/rules.js';
-import type { SchemeConfig, SchemeVersion, User } from '../domain/types.js';
+import type { OverdueRules, SchemeConfig, SchemeVersion, User } from '../domain/types.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors/AppError.js';
 import { hasPermission } from '../policies/access.js';
 import type { Store } from '../repositories/store.js';
@@ -12,6 +12,45 @@ import { audit, changeStatus, matches, paginate, userName } from './common.js';
 type Body = Record<string, unknown>;
 type Query = Record<string, unknown>;
 const OPEN: SchemeVersion['status'][] = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED'];
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Validates the instalment overdue / grace configuration. Every field is optional; defaults reproduce the current behaviour. */
+export const parseOverdueRules = (raw: unknown, errors: Record<string, string>): OverdueRules => {
+  const body = (raw && typeof raw === 'object' ? raw : {}) as Body;
+  const c = new Check(body);
+  const graceDays = c.int('graceDays', { min: 0, max: 365 });
+  const cutoffTime = c.str('cutoffTime', { pattern: /^([01]\d|2[0-3]):[0-5]\d$/, msg: 'Use 24-hour HH:MM' });
+  const timezone = c.str('timezone', { max: 60 });
+  if (timezone) {
+    try { new Intl.DateTimeFormat('en', { timeZone: timezone }); } catch { c.errors.timezone = 'Unknown timezone (use an IANA name such as Asia/Kolkata)'; }
+  }
+  if (body.partialPaymentStopsOverdue !== undefined && typeof body.partialPaymentStopsOverdue !== 'boolean') c.errors.partialPaymentStopsOverdue = 'Must be true or false';
+  const holidayPolicy = c.oneOf('holidayPolicy', ['NONE', 'NEXT_UNLISTED_DAY'] as const, false) ?? 'NONE';
+  const nonWorkingDates = c.list('nonWorkingDates', { max: 400, itemMax: 10 });
+  if (nonWorkingDates.some((d) => !DATE.test(d) || Number.isNaN(Date.parse(d)))) c.errors.nonWorkingDates = 'Each item must be a date (YYYY-MM-DD)';
+  const days = (field: 'reminderDaysBefore' | 'reminderDaysAfter') => {
+    const v = body[field];
+    if (v === undefined || v === null) return [] as number[];
+    if (!Array.isArray(v) || v.some((x) => !Number.isInteger(x) || x < 0 || x > 365) || v.length > 10) {
+      c.errors[field] = 'Must be up to 10 whole numbers of days (0–365)';
+      return [];
+    }
+    return [...new Set(v as number[])].sort((x, y) => x - y);
+  };
+  const reminderDaysBefore = days('reminderDaysBefore');
+  const reminderDaysAfter = days('reminderDaysAfter');
+  const lateFeeText = c.str('lateFeeText', { max: 2000 });
+  const escalationText = c.str('escalationText', { max: 2000 });
+  const disputedPaymentText = c.str('disputedPaymentText', { max: 2000 });
+  const policyConfirmationRef = c.str('policyConfirmationRef', { max: 200 });
+  for (const [k, v] of Object.entries(c.errors)) errors[`overdueRules.${k}`] = v;
+  return {
+    graceDays, cutoffTime, timezone, partialPaymentStopsOverdue: body.partialPaymentStopsOverdue === true, holidayPolicy,
+    nonWorkingDates: [...new Set(nonWorkingDates)].sort(), reminderDaysBefore, reminderDaysAfter,
+    lateFeeText, escalationText, disputedPaymentText, policyConfirmationRef,
+  };
+};
 
 /** Validates and normalises a scheme configuration. Returns non-blocking warnings separately. */
 export const parseSchemeConfig = (raw: unknown): { config: SchemeConfig; warnings: string[] } => {
@@ -33,6 +72,13 @@ export const parseSchemeConfig = (raw: unknown): { config: SchemeConfig; warning
   const eligibilityRequirements = c.str('eligibilityRequirements', { max: 2000 });
   const requiredDocuments = c.list('requiredDocuments', { max: 20, itemMax: 80 });
   const complianceChecklist = c.list('complianceChecklist', { max: 30, itemMax: 200 });
+
+  const schemeType = c.str('schemeType', { max: 80 });
+  const description = c.str('description', { max: 2000 });
+  const permittedBranchIds = c.list('permittedBranchIds', { max: 50, itemMax: 40 });
+  const discountPolicyText = c.str('discountPolicyText', { max: 2000 });
+  const roundingPolicyText = c.str('roundingPolicyText', { max: 1000 });
+  const overdueRules = parseOverdueRules(body.overdueRules, c.errors);
 
   const a = ((body.auction ?? {}) as Body);
   const ac = new Check(a);
@@ -58,6 +104,11 @@ export const parseSchemeConfig = (raw: unknown): { config: SchemeConfig; warning
   }
   if (!dividendRuleText) warnings.push('No dividend rule description recorded.');
   if (!commissionRuleText) warnings.push('No commission rule description recorded.');
+  if (!discountPolicyText) warnings.push('No discount policy description recorded.');
+  if (!roundingPolicyText) warnings.push('No rounding policy description recorded.');
+  if (!overdueRules.policyConfirmationRef) {
+    warnings.push('Overdue and grace-period rules are UNAPPROVED: no business/compliance confirmation reference is recorded.');
+  }
 
   return {
     warnings,
@@ -67,6 +118,7 @@ export const parseSchemeConfig = (raw: unknown): { config: SchemeConfig; warning
       auction: { mode: mode!, minBidPaise, maxBidPaise, bidIncrementPaise, tieBreakRule, notes },
       dividendRuleText, commissionRuleText, eligibilityRequirements, requiredDocuments, complianceChecklist,
       maxTicketsPerMember, minEnrolmentToActivate: minEnrolmentToActivate!, effectiveFrom: effectiveFrom!, effectiveTo,
+      schemeType, description, permittedBranchIds, discountPolicyText, roundingPolicyText, overdueRules,
     },
   };
 };
@@ -76,6 +128,10 @@ export const createSchemeService = (s: Store, approvals: ApprovalService) => {
     const v = s.schemeVersions.find((x) => x.id === id);
     if (!v) throw notFound('Scheme version');
     return v;
+  };
+  const assertBranches = (config: SchemeConfig) => {
+    const unknown = (config.permittedBranchIds ?? []).filter((id) => !s.branches.some((b) => b.id === id));
+    if (unknown.length) throw badRequest('Validation failed', { permittedBranchIds: `Unknown branch: ${unknown.join(', ')}` });
   };
   const versionsOf = (schemeId: string) => s.schemeVersions.filter((v) => v.schemeId === schemeId).sort((a, b) => a.version - b.version);
   const label = (v: SchemeVersion) => `${s.schemes.find((x) => x.id === v.schemeId)!.code} v${v.version} – ${v.config.name}`;
@@ -114,7 +170,10 @@ export const createSchemeService = (s: Store, approvals: ApprovalService) => {
   });
 
   return {
-    meta: () => ({ jurisdictions: JURISDICTIONS, frequencies: INSTALMENT_FREQUENCIES, auctionModes: AUCTION_MODES }),
+    meta: () => ({
+      jurisdictions: JURISDICTIONS, frequencies: INSTALMENT_FREQUENCIES, auctionModes: AUCTION_MODES,
+      branches: s.branches.map((b) => ({ id: b.id, name: b.name })),
+    }),
 
     list(u: User, q: Query) {
       const rows = s.schemes
@@ -159,6 +218,7 @@ export const createSchemeService = (s: Store, approvals: ApprovalService) => {
         throw badRequest('Validation failed', { ...(err.details ?? {}), ...c.errors });
       }
       c.done();
+      assertBranches(parsed.config);
       if (s.schemes.some((x) => x.code === code)) throw conflict('DUPLICATE_CODE', `Scheme code ${code} already exists`);
       const now = s.now().toISOString();
       const sc = { id: s.nextId('SCH'), code: code!, createdBy: u.id, createdAt: now };
@@ -176,6 +236,7 @@ export const createSchemeService = (s: Store, approvals: ApprovalService) => {
       const v = getVersion(versionId);
       if (v.status !== 'DRAFT') throw conflict('READ_ONLY', 'Only draft versions can be edited. Create a new version to change approved terms.');
       const parsed = parseSchemeConfig(body.config);
+      assertBranches(parsed.config);
       v.config = parsed.config;
       v.revision += 1;
       v.updatedAt = s.now().toISOString();

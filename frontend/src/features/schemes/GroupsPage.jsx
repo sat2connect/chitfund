@@ -10,7 +10,7 @@ import { useListParams } from '../../hooks/useListParams.js';
 import { humanize } from '../../utils/labels.js';
 import { listGroups } from './schemeService.js';
 
-const STATUSES = ['DRAFT', 'APPROVAL_PENDING', 'ENROLMENT_OPEN', 'READY_TO_START', 'ACTIVE', 'SUSPENDED', 'COMPLETED', 'CLOSED'];
+const STATUSES = ['DRAFT', 'APPROVAL_PENDING', 'APPROVED', 'ENROLMENT_OPEN', 'READY_TO_START', 'ACTIVE', 'SUSPENDED', 'COMPLETED', 'CLOSED'];
 
 export default function GroupsPage() {
   const { can } = useAuth();

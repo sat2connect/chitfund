@@ -107,8 +107,8 @@ describe('real node-postgres driver against the embedded engine', () => {
   });
 
   it('migrates, reports pending migrations, and is idempotent', async () => {
-    expect(await pendingMigrations(db)).toEqual(['001_core.sql', '002_auth.sql']);
-    expect((await migrate(db)).applied).toEqual(['001_core.sql', '002_auth.sql']);
+    expect(await pendingMigrations(db)).toEqual(['001_core.sql', '002_auth.sql', '003_group_approved_state.sql']);
+    expect((await migrate(db)).applied).toEqual(['001_core.sql', '002_auth.sql', '003_group_approved_state.sql']);
     expect(await pendingMigrations(db)).toEqual([]);
     expect((await migrate(db)).applied).toEqual([]);
   });

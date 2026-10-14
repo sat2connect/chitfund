@@ -11,6 +11,7 @@ import { createKycService } from '../services/kycService.js';
 import { createApprovalService } from '../services/approvalService.js';
 import { createSchemeService } from '../services/schemeService.js';
 import { createGroupService } from '../services/groupService.js';
+import { createCalculationService } from '../services/calculationService.js';
 import { createChitController } from '../controllers/chitController.js';
 import type { RequestHandler, Router as ExpressRouter } from 'express';
 import type { UserAdminService } from '../auth/userAdminService.js';
@@ -65,7 +66,7 @@ export const createApiRouter = (store: Store, deps: RouterDeps = { mode: 'dev' }
       if (dev) ensureSimulatedMemberUsers(store, g); // real deployments issue member accounts explicitly
     },
   });
-  const ch = createChitController(createSchemeService(store, approvalSvc), groupSvc, approvalSvc);
+  const ch = createChitController(createSchemeService(store, approvalSvc), groupSvc, approvalSvc, createCalculationService());
   const dashboard = createDashboardController(createDashboardService(demoDashboardRepository));
 
   const dev = deps.mode === 'dev';
@@ -116,6 +117,9 @@ export const createApiRouter = (store: Store, deps: RouterDeps = { mode: 'dev' }
   r.post('/scheme-versions/:id/publish', need('scheme:publish'), ch.publishVersion);
   r.post('/scheme-versions/:id/retire', need('scheme:retire'), ch.retireVersion);
 
+  r.get('/calculations/rules', need('scheme:view'), ch.calcRules);
+  r.post('/calculations/preview', need('scheme:view'), ch.calcPreview);
+
   r.get('/groups', need('group:view'), ch.listGroups);
   r.post('/groups', need('group:create'), ch.createGroup);
   r.get('/groups/:id', need('group:view'), ch.getGroup);
@@ -125,6 +129,8 @@ export const createApiRouter = (store: Store, deps: RouterDeps = { mode: 'dev' }
   r.post('/groups/:id/tickets', need('group:allocate'), ch.allocate);
   r.post('/groups/:id/tickets/:ticketNo/release', need('group:allocate'), ch.release);
   r.post('/groups/:id/checklist/:itemId/confirm', need('group:attest'), ch.attest);
+  r.post('/groups/:id/open-enrolment', need('group:open-enrolment'), ch.openEnrolment);
+  r.post('/groups/:id/documents', need('group:attest'), ch.addDocument);
   r.post('/groups/:id/ready', need('group:submit'), ch.markReady);
   r.post('/groups/:id/reopen', need('group:submit'), ch.reopen);
   r.post('/groups/:id/activation-request', need('group:submit'), ch.requestActivation);

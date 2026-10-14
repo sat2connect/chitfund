@@ -27,12 +27,13 @@ export function AccountsPage() {
           { key: 'code', header: 'Code' },
           { key: 'name', header: 'Name' },
           { key: 'type', header: 'Type', render: (r) => humanize(r.type) },
+          { key: 'parentCode', header: 'Parent', render: (r) => r.parentCode ?? '—' },
           { key: 'active', header: 'Status', render: (r) => <Status value={r.active ? 'ACTIVE' : 'CANCELLED'} /> },
           { key: 'placeholder', header: 'Approved', render: (r) => (r.placeholder ? 'No (placeholder)' : 'Added by finance') },
           { key: 'a', header: '', render: (r) => (can('account:manage') ? <ToggleButton a={r} onDone={reload} /> : null) },
         ]}
       />
-      {can('account:manage') && <div className="mt-5"><AccountForm onDone={reload} /></div>}
+      {can('account:manage') && <div className="mt-5"><AccountForm accounts={data?.items ?? []} onDone={reload} /></div>}
       {rules.data && (
         <Card title="Automatic posting rules (placeholder)" className="mt-5">
           <p className="mb-2 text-sm text-muted">{rules.data.notice}</p>
@@ -54,8 +55,8 @@ function ToggleButton({ a, onDone }) {
   );
 }
 
-function AccountForm({ onDone }) {
-  const [f, setF] = useState({ code: '', name: '', type: '' });
+function AccountForm({ accounts, onDone }) {
+  const [f, setF] = useState({ code: '', name: '', type: '', parentCode: '' });
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const fe = err?.details ?? {};
@@ -64,8 +65,8 @@ function AccountForm({ onDone }) {
     setBusy(true);
     setErr(null);
     try {
-      await createAccount(f);
-      setF({ code: '', name: '', type: '' });
+      await createAccount({ ...f, parentCode: f.parentCode || undefined });
+      setF({ code: '', name: '', type: '', parentCode: '' });
       onDone();
     } catch (x) {
       setErr(x);
@@ -76,11 +77,12 @@ function AccountForm({ onDone }) {
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
   return (
     <Card title="Add account">
-      <form onSubmit={submit} className="grid items-start gap-3 sm:grid-cols-4">
-        {err && !err.details && <div className="sm:col-span-4"><Banner tone="error">{err.message}</Banner></div>}
+      <form onSubmit={submit} className="grid items-start gap-3 sm:grid-cols-5">
+        {err && !err.details && <div className="sm:col-span-5"><Banner tone="error">{err.message}</Banner></div>}
         <TextField label="Code" required value={f.code} onChange={set('code')} error={fe.code} />
         <TextField label="Name" required value={f.name} onChange={set('name')} error={fe.name} />
         <SelectField label="Type" required placeholder="Select type" value={f.type} onChange={set('type')} error={fe.type} options={['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE'].map((t) => ({ value: t, label: humanize(t) }))} />
+        <SelectField label="Parent account" placeholder="None" value={f.parentCode} onChange={set('parentCode')} error={fe.parentCode} options={accounts.map((a) => ({ value: a.code, label: `${a.code} · ${a.name}` }))} />
         <div className="self-end"><Button type="submit" disabled={busy || !f.code || !f.name || !f.type}>Add account</Button></div>
       </form>
     </Card>

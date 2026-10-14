@@ -19,7 +19,7 @@ export type Permission =
   | 'kyc:view' | 'kyc:submit' | 'kyc:decide' | 'kyc:document:view'
   | 'application:view' | 'application:create' | 'application:approve'
   | 'scheme:view' | 'scheme:create' | 'scheme:edit' | 'scheme:submit' | 'scheme:approve' | 'scheme:publish' | 'scheme:retire'
-  | 'group:view' | 'group:create' | 'group:edit' | 'group:submit' | 'group:approve' | 'group:allocate' | 'group:attest' | 'group:suspend'
+  | 'group:view' | 'group:create' | 'group:edit' | 'group:submit' | 'group:approve' | 'group:allocate' | 'group:attest' | 'group:suspend' | 'group:open-enrolment'
   | 'approval:view'
   | 'instalment:view' | 'payment:view' | 'collection:record' | 'payment:initiate' | 'payment:simulate'
   | 'payment:reverse-request' | 'payment:reverse-approve' | 'receipt:view' | 'reconcile:view' | 'reconcile:manage'
@@ -196,6 +196,38 @@ export interface SchemeConfig {
   minEnrolmentToActivate: number;
   effectiveFrom: string;
   effectiveTo?: string;
+  /** Free-text classification chosen by the company (no fixed list is imposed). */
+  schemeType?: string;
+  description?: string;
+  /** Branches allowed to run groups of this scheme. Empty or absent = no branch restriction. */
+  permittedBranchIds?: string[];
+  /** Policy descriptions as approved by the company. Text only: NOT interpreted by the system. */
+  discountPolicyText?: string;
+  roundingPolicyText?: string;
+  /** Instalment overdue / grace rules. Provisional until the business and compliance team confirm them. */
+  overdueRules?: OverdueRules;
+}
+
+export interface OverdueRules {
+  /** Overrides the global placeholder grace days when set. */
+  graceDays?: number;
+  /** Recorded for the approved policy; NOT applied yet because payments carry a date, not a time. */
+  cutoffTime?: string;
+  timezone?: string;
+  /** When true, an instalment with any successful part-payment stays "Partially paid" instead of becoming overdue. */
+  partialPaymentStopsOverdue: boolean;
+  /** NEXT_UNLISTED_DAY moves a due date that falls on a listed non-working date to the next date that is not listed. */
+  holidayPolicy: 'NONE' | 'NEXT_UNLISTED_DAY';
+  nonWorkingDates: string[];
+  /** Reminder offsets in days. Shown for planning only; nothing is sent (no notification provider). */
+  reminderDaysBefore: number[];
+  reminderDaysAfter: number[];
+  /** Descriptions only: late fees are never charged and eligibility is never changed automatically. */
+  lateFeeText?: string;
+  escalationText?: string;
+  disputedPaymentText?: string;
+  /** Reference of the business/compliance confirmation. Without it the rules are shown as UNAPPROVED. */
+  policyConfirmationRef?: string;
 }
 
 export type SchemeVersionStatus =
@@ -223,7 +255,7 @@ export interface SchemeVersion {
 }
 
 export type GroupStatus =
-  | 'DRAFT' | 'APPROVAL_PENDING' | 'ENROLMENT_OPEN' | 'READY_TO_START' | 'ACTIVE' | 'SUSPENDED' | 'COMPLETED' | 'CLOSED';
+  | 'DRAFT' | 'APPROVAL_PENDING' | 'APPROVED' | 'ENROLMENT_OPEN' | 'READY_TO_START' | 'ACTIVE' | 'SUSPENDED' | 'COMPLETED' | 'CLOSED';
 
 export interface TicketEvent {
   action: 'ALLOCATED' | 'RELEASED';
@@ -249,6 +281,23 @@ export interface ChecklistItem {
   confirmedAt?: string;
 }
 
+export interface ScheduledInstalment {
+  seq: number;
+  dueDate: string;
+}
+export interface ScheduledAuction {
+  cycleNo: number;
+  plannedDate: string;
+}
+/** Metadata only: no file storage is configured. */
+export interface ComplianceDocument {
+  id: string;
+  title: string;
+  reference: string;
+  addedBy: string;
+  addedAt: string;
+}
+
 export interface ChitGroup {
   id: string;
   code: string;
@@ -257,7 +306,14 @@ export interface ChitGroup {
   schemeVersionId: string;
   branchId: string;
   status: GroupStatus;
+  /** Commencement date: the first instalment is due on it (placeholder rule). */
   plannedStartDate: string;
+  enrolmentStartDate?: string;
+  enrolmentEndDate?: string;
+  /** Provisional: derived from the commencement date by the placeholder monthly rule while the group is in Draft. */
+  instalmentSchedule?: ScheduledInstalment[];
+  auctionSchedule?: ScheduledAuction[];
+  complianceDocuments?: ComplianceDocument[];
   revision: number;
   tickets: Ticket[];
   checklist: ChecklistItem[];
@@ -395,6 +451,8 @@ export interface Account {
   code: string;
   name: string;
   type: AccountType;
+  /** Optional grouping: the account this one rolls up under. Reporting does not use it yet. */
+  parentId?: string;
   active: boolean;
   /** True while the chart has not been approved by the client's accountant. */
   placeholder: boolean;

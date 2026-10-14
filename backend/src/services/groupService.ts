@@ -1,6 +1,7 @@
 import { groupTransitions } from '../domain/rules.js';
 import type { ChitGroup, User } from '../domain/types.js';
 import { conflict, notFound } from '../errors/AppError.js';
+import { addMonths } from './instalmentService.js';
 import { assertBranch, hasPermission } from '../policies/access.js';
 import type { Store } from '../repositories/store.js';
 import { Check } from '../validators/input.js';
@@ -15,7 +16,29 @@ export interface GroupHooks {
   onActivated?: (g: ChitGroup, config: { tenureMonths: number; installmentAmountPaise: number }) => void;
 }
 
-export const createGroupService = (s: Store, approvals: ApprovalService, hooks: GroupHooks = {}) => {
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Reads the optional planning fields (enrolment window, auction schedule) shared by create and update.
+ * Only fields present in the body are returned, so an update that omits one leaves it unchanged.
+ */
+const parsePlan = (body: Body, c: Check, tenureMonths: number, plannedStartDate: string) => {
+  const out: { enrolmentStartDate?: string | null; enrolmentEndDate?: string | null; auctionSchedule?: { cycleNo: number; plannedDate: string }[] } = {};
+  if ('enrolmentStartDate' in body) out.enrolmentStartDate = c.date('enrolmentStartDate') ?? null;
+  if ('enrolmentEndDate' in body) out.enrolmentEndDate = c.date('enrolmentEndDate') ?? null;
+  if (out.enrolmentStartDate && out.enrolmentEndDate && out.enrolmentEndDate < out.enrolmentStartDate) c.errors.enrolmentEndDate = 'Must not be before the enrolment start date';
+  if ('auctionSchedule' in body) {
+    const dates = c.list('auctionSchedule', { max: 600, itemMax: 10 });
+    if (dates.length > tenureMonths) c.errors.auctionSchedule = `At most ${tenureMonths} auction dates (one per instalment cycle)`;
+    else if (dates.some((d) => !DATE.test(d) || Number.isNaN(Date.parse(d)))) c.errors.auctionSchedule = 'Each item must be a date (YYYY-MM-DD)';
+    else if (dates.some((d, i) => i > 0 && d <= dates[i - 1]!)) c.errors.auctionSchedule = 'Dates must be in increasing order';
+    else if (dates.some((d) => d < plannedStartDate)) c.errors.auctionSchedule = 'An auction cannot be planned before the commencement date';
+    out.auctionSchedule = dates.map((plannedDate, i) => ({ cycleNo: i + 1, plannedDate }));
+  }
+  return out;
+};
+
+export const createGroupService =(s: Store, approvals: ApprovalService, hooks: GroupHooks = {}) => {
   const getGroup = (id: string) => {
     const g = s.groups.find((x) => x.id === id);
     if (!g) throw notFound('Group');
@@ -30,6 +53,16 @@ export const createGroupService = (s: Store, approvals: ApprovalService, hooks: 
   const label = (g: ChitGroup) => `${g.code} – ${g.name}`;
   const openRequest = (g: ChitGroup, type: 'GROUP_OPEN' | 'GROUP_ACTIVATION') =>
     s.approvals.find((r) => r.entityType === type && r.entityId === g.id && (r.status === 'PENDING' || r.status === 'IN_REVIEW'));
+
+  /** Enrolment is limited to its window when the group defines one. */
+  const assertWithinEnrolmentWindow = (g: ChitGroup) => {
+    const today = s.today();
+    if (g.enrolmentStartDate && today < g.enrolmentStartDate) throw conflict('ENROLMENT_NOT_STARTED', `Enrolment starts on ${g.enrolmentStartDate}`);
+    if (g.enrolmentEndDate && today > g.enrolmentEndDate) throw conflict('ENROLMENT_ENDED', `Enrolment ended on ${g.enrolmentEndDate}`);
+  };
+  /** Provisional monthly schedule from the commencement date (placeholder rule, pending approved business rules). */
+  const scheduleFor = (start: string, tenureMonths: number) =>
+    Array.from({ length: tenureMonths }, (_, i) => ({ seq: i + 1, dueDate: addMonths(start, i) }));
 
   /** Server-computed readiness. Automatic checks come from data; checklist items are manually attested. */
   const readiness = (g: ChitGroup) => {
@@ -60,6 +93,10 @@ export const createGroupService = (s: Store, approvals: ApprovalService, hooks: 
     const act = openRequest(g, 'GROUP_ACTIVATION');
     return {
       ...g,
+      instalmentSchedule: g.instalmentSchedule ?? [],
+      auctionSchedule: g.auctionSchedule ?? [],
+      complianceDocuments: (g.complianceDocuments ?? []).map((d) => ({ ...d, addedByName: userName(s, d.addedBy) })),
+      schedulesNotice: 'Instalment dates follow a provisional monthly rule and auction dates are planning entries; both are unapproved until the business confirms the rules.',
       scheme: { id: v.schemeId, versionId: v.id, version: v.version, name: v.config.name, status: v.status, config: v.config },
       tickets: g.tickets.map((t) => ({ ...t, customerName: s.customers.find((c) => c.id === t.customerId)?.name })),
       checklist: g.checklist.map((i) => ({ ...i, confirmedByName: userName(s, i.confirmedBy) })),
@@ -71,6 +108,8 @@ export const createGroupService = (s: Store, approvals: ApprovalService, hooks: 
         canEdit: hasPermission(u, 'group:edit') && g.status === 'DRAFT',
         canSubmit: hasPermission(u, 'group:submit') && g.status === 'DRAFT',
         canWithdrawOpen: openRequest(g, 'GROUP_OPEN')?.makerId === u.id,
+        canOpenEnrolment: hasPermission(u, 'group:open-enrolment') && g.status === 'APPROVED',
+        canAddDocument: hasPermission(u, 'group:attest') && !['CLOSED', 'COMPLETED'].includes(g.status),
         canAllocate: hasPermission(u, 'group:allocate') && openStates.includes(g.status),
         canAttest: hasPermission(u, 'group:attest') && ['ENROLMENT_OPEN', 'READY_TO_START'].includes(g.status),
         canMarkReady: hasPermission(u, 'group:submit') && g.status === 'ENROLMENT_OPEN',
@@ -89,7 +128,7 @@ export const createGroupService = (s: Store, approvals: ApprovalService, hooks: 
     currentRevision: (r) => getGroup(r.entityId).revision,
     onDecision(r, decision, u, comment) {
       const g = getGroup(r.entityId);
-      changeStatus(s, u, g, decision === 'APPROVED' ? 'ENROLMENT_OPEN' : decision === 'RETURNED' ? 'DRAFT' : 'CLOSED', groupTransitions, comment);
+      changeStatus(s, u, g, decision === 'APPROVED' ? 'APPROVED' : decision === 'RETURNED' ? 'DRAFT' : 'CLOSED', groupTransitions, comment);
     },
     onCancel: (r, u) => changeStatus(s, u, getGroup(r.entityId), 'DRAFT', groupTransitions, 'Submission withdrawn'),
   });
@@ -153,10 +192,16 @@ export const createGroupService = (s: Store, approvals: ApprovalService, hooks: 
       if (plannedStartDate! < v.config.effectiveFrom || (v.config.effectiveTo && plannedStartDate! > v.config.effectiveTo)) {
         throw conflict('OUTSIDE_EFFECTIVE_DATES', `Planned start must fall within the scheme's effective dates (${v.config.effectiveFrom} to ${v.config.effectiveTo ?? 'open'})`);
       }
+      const permitted = v.config.permittedBranchIds ?? [];
+      if (permitted.length && !permitted.includes(branchId!)) throw conflict('BRANCH_NOT_PERMITTED', 'This scheme is not permitted for the selected branch');
+      const plan = parsePlan(body, c, v.config.tenureMonths, plannedStartDate!);
+      c.done();
       if (s.groups.some((g) => g.code === code)) throw conflict('DUPLICATE_CODE', `Group code ${code} already exists`);
       const g: ChitGroup = {
         id: s.nextId('GRP'), code: code!, name: name!, schemeId: v.schemeId, schemeVersionId: v.id, branchId: branchId!,
         status: 'DRAFT', plannedStartDate: plannedStartDate!, revision: 1, history: [],
+        enrolmentStartDate: plan.enrolmentStartDate ?? undefined, enrolmentEndDate: plan.enrolmentEndDate ?? undefined,
+        instalmentSchedule: scheduleFor(plannedStartDate!, v.config.tenureMonths), auctionSchedule: plan.auctionSchedule ?? [], complianceDocuments: [],
         tickets: Array.from({ length: v.config.memberCount }, (_, i) => ({ no: i + 1, history: [] })),
         checklist: v.config.complianceChecklist.map((title) => ({ id: s.nextId('CHK'), title, status: 'PENDING' as const })),
         createdBy: u.id, createdAt: s.now().toISOString(),
@@ -172,9 +217,18 @@ export const createGroupService = (s: Store, approvals: ApprovalService, hooks: 
       const c = new Check(body);
       const name = c.str('name', { required: true, min: 3, max: 120 });
       const plannedStartDate = c.date('plannedStartDate', true);
+      const cfg = versionOf(g).config;
+      const plan = parsePlan(body, c, cfg.tenureMonths, plannedStartDate ?? g.plannedStartDate);
       c.done();
+      if (plannedStartDate! < cfg.effectiveFrom || (cfg.effectiveTo && plannedStartDate! > cfg.effectiveTo)) {
+        throw conflict('OUTSIDE_EFFECTIVE_DATES', `Planned start must fall within the scheme's effective dates (${cfg.effectiveFrom} to ${cfg.effectiveTo ?? 'open'})`);
+      }
       g.name = name!;
       g.plannedStartDate = plannedStartDate!;
+      g.instalmentSchedule = scheduleFor(plannedStartDate!, cfg.tenureMonths);
+      if ('enrolmentStartDate' in plan) g.enrolmentStartDate = plan.enrolmentStartDate ?? undefined;
+      if ('enrolmentEndDate' in plan) g.enrolmentEndDate = plan.enrolmentEndDate ?? undefined;
+      if (plan.auctionSchedule) g.auctionSchedule = plan.auctionSchedule;
       g.revision += 1;
       audit(s, u, 'group.edit', 'group', g.id, { revision: g.revision });
       return present(g, u);
@@ -202,6 +256,7 @@ export const createGroupService = (s: Store, approvals: ApprovalService, hooks: 
       const ticketNo = c.int('ticketNo', { min: 1 });
       c.done();
       if (g.status !== 'ENROLMENT_OPEN') throw conflict('ENROLMENT_CLOSED', 'Tickets can only be allocated while enrolment is open');
+      assertWithinEnrolmentWindow(g);
       const customer = s.customers.find((x) => x.id === customerId);
       if (!customer) throw notFound('Customer');
       assertBranch(u, customer.branchId);
@@ -237,6 +292,29 @@ export const createGroupService = (s: Store, approvals: ApprovalService, hooks: 
       ticket.allocatedAt = undefined;
       logActivity(s, u, 'customer', customerId, 'TICKET_RELEASED', `Ticket ${ticketNo} released in group ${g.code} (${reason})`);
       audit(s, u, 'group.release', 'group', g.id, { ticketNo, customerId, reason });
+      return present(g, u);
+    },
+
+    /** Central operations opens enrolment for an approved group; it is a separate decision from approval. */
+    openEnrolment(u: User, id: string) {
+      const g = scoped(u, id);
+      if (g.status !== 'APPROVED') throw conflict('INVALID_TRANSITION', 'Only an approved group can be opened for enrolment');
+      assertWithinEnrolmentWindow(g);
+      changeStatus(s, u, g, 'ENROLMENT_OPEN', groupTransitions, 'Enrolment opened');
+      audit(s, u, 'group.open_enrolment', 'group', g.id);
+      return present(g, u);
+    },
+
+    /** Records a compliance document reference (metadata only; no file is stored). */
+    addDocument(u: User, id: string, body: Body) {
+      const g = scoped(u, id);
+      if (['CLOSED', 'COMPLETED'].includes(g.status)) throw conflict('READ_ONLY', 'Documents cannot be added to a closed group');
+      const c = new Check(body);
+      const title = c.str('title', { required: true, min: 3, max: 120 });
+      const reference = c.str('reference', { required: true, max: 200 });
+      c.done();
+      (g.complianceDocuments ??= []).push({ id: s.nextId('DOC'), title: title!, reference: reference!, addedBy: u.id, addedAt: s.now().toISOString() });
+      audit(s, u, 'group.document', 'group', g.id, { title, reference });
       return present(g, u);
     },
 

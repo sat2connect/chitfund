@@ -23,7 +23,9 @@ export function ConfigView({ c }) {
     <div className="grid gap-5 lg:grid-cols-2">
       <Card title="Terms">
         <dl className="divide-y divide-line">
+          <Row label="Scheme type">{c.schemeType}</Row>
           <Row label="Jurisdiction">{humanize(c.jurisdiction)}</Row>
+          <Row label="Permitted branches">{c.permittedBranchIds?.length ? c.permittedBranchIds.join(', ') : 'No restriction'}</Row>
           <Row label="Chit value">{formatPaise(c.chitValuePaise)}</Row>
           <Row label="Members / tickets">{c.memberCount}</Row>
           <Row label="Instalment">{formatPaise(c.installmentAmountPaise)} · {humanize(c.frequency)}</Row>
@@ -46,9 +48,29 @@ export function ConfigView({ c }) {
         <p className="text-sm font-medium">Dividend / discount</p>
         <p className="mb-3 whitespace-pre-wrap text-sm text-muted">{c.dividendRuleText || 'Not recorded'}</p>
         <p className="text-sm font-medium">Commission</p>
-        <p className="whitespace-pre-wrap text-sm text-muted">{c.commissionRuleText || 'Not recorded'}</p>
+        <p className="mb-3 whitespace-pre-wrap text-sm text-muted">{c.commissionRuleText || 'Not recorded'}</p>
+        <p className="text-sm font-medium">Discount policy</p>
+        <p className="mb-3 whitespace-pre-wrap text-sm text-muted">{c.discountPolicyText || 'Not recorded'}</p>
+        <p className="text-sm font-medium">Rounding policy</p>
+        <p className="whitespace-pre-wrap text-sm text-muted">{c.roundingPolicyText || 'Not recorded'}</p>
+      </Card>
+      <Card title="Overdue and grace-period rules">
+        {c.overdueRules?.policyConfirmationRef
+          ? <p className="mb-2 text-sm text-emerald-700">Confirmation reference recorded: {c.overdueRules.policyConfirmationRef}</p>
+          : <p className="mb-2 text-sm font-medium text-amber-700">UNAPPROVED: no business / compliance confirmation recorded.</p>}
+        <dl className="divide-y divide-line">
+          <Row label="Grace period">{c.overdueRules?.graceDays === undefined ? 'System placeholder' : `${c.overdueRules.graceDays} day(s)`}</Row>
+          <Row label="Part-payment stops overdue">{c.overdueRules?.partialPaymentStopsOverdue ? 'Yes' : 'No'}</Row>
+          <Row label="Cut-off (recorded, not applied)">{c.overdueRules?.cutoffTime && `${c.overdueRules.cutoffTime} ${c.overdueRules.timezone ?? ''}`}</Row>
+          <Row label="Non-working dates">{c.overdueRules?.holidayPolicy === 'NEXT_UNLISTED_DAY' ? `${c.overdueRules.nonWorkingDates.length} listed; due date moves on` : 'Do not move due dates'}</Row>
+          <Row label="Reminders (days)">{(c.overdueRules?.reminderDaysBefore?.length || c.overdueRules?.reminderDaysAfter?.length) ? `before ${c.overdueRules.reminderDaysBefore.join(', ') || '-'}; after ${c.overdueRules.reminderDaysAfter.join(', ') || '-'}` : ''}</Row>
+        </dl>
+        {c.overdueRules?.lateFeeText && <p className="mt-2 whitespace-pre-wrap text-sm text-muted">Late fee (not charged): {c.overdueRules.lateFeeText}</p>}
+        {c.overdueRules?.escalationText && <p className="mt-2 whitespace-pre-wrap text-sm text-muted">Escalation: {c.overdueRules.escalationText}</p>}
+        {c.overdueRules?.disputedPaymentText && <p className="mt-2 whitespace-pre-wrap text-sm text-muted">Disputed / reversed payments: {c.overdueRules.disputedPaymentText}</p>}
       </Card>
       <Card title="Eligibility and compliance">
+        {c.description && <p className="mb-3 whitespace-pre-wrap text-sm">{c.description}</p>}
         <p className="mb-3 whitespace-pre-wrap text-sm text-muted">{c.eligibilityRequirements || 'No eligibility requirements recorded'}</p>
         <p className="text-sm font-medium">Required documents</p>
         <ul className="mb-3 list-disc pl-5 text-sm text-muted">{c.requiredDocuments.length ? c.requiredDocuments.map((d) => <li key={d}>{d}</li>) : <li>None</li>}</ul>

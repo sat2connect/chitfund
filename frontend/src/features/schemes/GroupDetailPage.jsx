@@ -9,7 +9,7 @@ import { useApi } from '../../hooks/useApi.js';
 import { formatPaise } from '../../utils/format.js';
 import { formatDateTime, humanize } from '../../utils/labels.js';
 import { listCustomers } from '../crm/crmService.js';
-import { allocateTicket, confirmChecklistItem, getGroup, groupAction, releaseTicket } from './schemeService.js';
+import { addGroupDocument, allocateTicket, confirmChecklistItem, getGroup, groupAction, releaseTicket } from './schemeService.js';
 
 export default function GroupDetailPage() {
   const { id } = useParams();
@@ -51,6 +51,7 @@ export default function GroupDetailPage() {
           <>
             {a.canSubmit && <Button onClick={() => setDialog({ kind: 'submit' })}>Submit for approval</Button>}
             {a.canWithdrawOpen && <Button variant="secondary" onClick={() => setDialog({ kind: 'withdraw' })}>Withdraw submission</Button>}
+            {a.canOpenEnrolment && <Button onClick={() => setDialog({ kind: 'openEnrolment' })}>Open enrolment</Button>}
             {a.canMarkReady && <Button onClick={() => setDialog({ kind: 'ready' })}>Mark ready to start</Button>}
             {a.canRequestActivation && <Button onClick={() => setDialog({ kind: 'activate' })}>Request activation</Button>}
             {a.canReopen && <Button variant="secondary" onClick={() => setDialog({ kind: 'reopen' })}>Reopen enrolment</Button>}
@@ -67,6 +68,7 @@ export default function GroupDetailPage() {
         <Link className="text-brand-700 underline" to={`/schemes/${g.scheme.id}`}>Scheme</Link>
       </div>
       {g.status === 'APPROVAL_PENDING' && <Banner tone="info">Waiting for central approval to open enrolment. Track it in the Approval Centre.</Banner>}
+      {g.status === 'APPROVED' && <Banner tone="info">Approved. Enrolment is not open yet: central operations must open it{g.enrolmentStartDate ? ` (not before ${g.enrolmentStartDate})` : ''}.</Banner>}
       {g.activationRequestId && <Banner tone="info">Activation request {g.activationRequestId} is awaiting independent approval.</Banner>}
       {actionError && !dialog && <Banner tone="error">{actionError.message}</Banner>}
 
@@ -91,6 +93,39 @@ export default function GroupDetailPage() {
               </table>
             </div>
             {a.canAllocate && <AllocateForm groupId={id} onDone={reload} />}
+          </Card>
+          <Card title="Dates and schedules">
+            <dl className="mb-3 grid gap-x-6 sm:grid-cols-3">
+              <div><dt className="text-xs text-muted">Enrolment start</dt><dd className="text-sm">{g.enrolmentStartDate ?? 'Not set'}</dd></div>
+              <div><dt className="text-xs text-muted">Enrolment end</dt><dd className="text-sm">{g.enrolmentEndDate ?? 'Not set'}</dd></div>
+              <div><dt className="text-xs text-muted">Commencement</dt><dd className="text-sm">{g.plannedStartDate}</dd></div>
+            </dl>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <h3 className="text-sm font-semibold">Instalment schedule (provisional)</h3>
+                {g.instalmentSchedule.length === 0 ? <p className="text-sm text-muted">Not generated.</p> : (
+                  <ol className="mt-1 text-sm">{g.instalmentSchedule.map((x) => <li key={x.seq}>#{x.seq} · {x.dueDate}</li>)}</ol>
+                )}
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold">Auction schedule (planned)</h3>
+                {g.auctionSchedule.length === 0 ? <p className="text-sm text-muted">No dates planned.</p> : (
+                  <ol className="mt-1 text-sm">{g.auctionSchedule.map((x) => <li key={x.cycleNo}>Cycle {x.cycleNo} · {x.plannedDate}</li>)}</ol>
+                )}
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-muted">{g.schedulesNotice}</p>
+          </Card>
+          <Card title="Compliance documents (references only)">
+            {g.complianceDocuments.length === 0 ? <p className="text-sm text-muted">No document references recorded.</p> : (
+              <ul className="divide-y divide-line text-sm">
+                {g.complianceDocuments.map((d) => (
+                  <li key={d.id} className="py-1.5"><strong>{d.title}</strong> · {d.reference}<br /><span className="text-xs text-muted">{d.addedByName} · {formatDateTime(d.addedAt)}</span></li>
+                ))}
+              </ul>
+            )}
+            {a.canAddDocument && <DocumentForm groupId={id} onDone={reload} />}
+            <p className="mt-2 text-xs text-muted">Only the reference is stored; no file storage is configured.</p>
           </Card>
         </div>
         <div className="space-y-5">
@@ -138,7 +173,8 @@ export default function GroupDetailPage() {
       </div>
 
       {dialog?.kind === 'submit' && <ConfirmDialog title="Submit for approval" message="The group is locked and sent to central approval to open enrolment." confirmLabel="Submit" busy={busy} error={actionError} onCancel={close} onConfirm={() => run(() => groupAction(id, 'submit'))} />}
-      {dialog?.kind === 'withdraw' && <ConfirmDialog title="Withdraw submission" message="The group returns to Draft." confirmLabel="Withdraw" busy={busy} error={actionError} onCancel={close} onConfirm={() => run(() => groupAction(id, 'withdraw'))} />}
+      {dialog?.kind === 'openEnrolment' && <ConfirmDialog title="Open enrolment" message="Tickets can then be allocated to eligible members, within the enrolment dates if any are set." confirmLabel="Open enrolment" busy={busy} error={actionError} onCancel={close} onConfirm={() => run(() => groupAction(id, 'open-enrolment'))} />}
+      {dialog?.kind === 'withdraw' &&<ConfirmDialog title="Withdraw submission" message="The group returns to Draft." confirmLabel="Withdraw" busy={busy} error={actionError} onCancel={close} onConfirm={() => run(() => groupAction(id, 'withdraw'))} />}
       {dialog?.kind === 'ready' && <ConfirmDialog title="Mark ready to start" message="The server re-checks every readiness condition." confirmLabel="Mark ready" busy={busy} error={actionError} onCancel={close} onConfirm={() => run(() => groupAction(id, 'ready'))} />}
       {dialog?.kind === 'activate' && <ConfirmDialog title="Request activation" message="Sends the group for independent approval. On approval it becomes Active and members' memberships become Active." confirmLabel="Request activation" busy={busy} error={actionError} onCancel={close} onConfirm={() => run(() => groupAction(id, 'activation-request'))} />}
       {dialog?.kind === 'withdrawActivation' && <ConfirmDialog title="Withdraw activation request" confirmLabel="Withdraw" busy={busy} error={actionError} onCancel={close} onConfirm={() => run(() => groupAction(id, 'activation-request/withdraw'))} />}
@@ -186,6 +222,37 @@ function AllocateForm({ groupId, onDone }) {
         options={eligible.map((c) => ({ value: c.id, label: `${c.name} (${c.id})` }))}
       />
       <Button type="submit" disabled={busy || !customerId}>Allocate ticket</Button>
+    </form>
+  );
+}
+
+function DocumentForm({ groupId, onDone }) {
+  const [f, setF] = useState({ title: '', reference: '' });
+  const [err, setErr] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const fe = err?.details && !Array.isArray(err.details) ? err.details : {};
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setErr(null);
+    try {
+      await addGroupDocument(groupId, f);
+      setF({ title: '', reference: '' });
+      onDone();
+    } catch (x) {
+      setErr(x);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form onSubmit={submit} className="mt-3 space-y-2 border-t border-line pt-3">
+      {err && !err.details && <Banner tone="error">{err.message}</Banner>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <TextField label="Document title" required value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} error={fe.title} />
+        <TextField label="Reference" required value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} error={fe.reference} />
+      </div>
+      <Button type="submit" variant="secondary" disabled={busy || !f.title.trim() || !f.reference.trim()}>Add reference</Button>
     </form>
   );
 }

@@ -18,6 +18,7 @@ import SchemesPage, { SchemesLayout } from '../features/schemes/SchemesPage.jsx'
 import SchemeFormPage from '../features/schemes/SchemeFormPage.jsx';
 import SchemeDetailPage from '../features/schemes/SchemeDetailPage.jsx';
 import GroupsPage from '../features/schemes/GroupsPage.jsx';
+import CalculationPreviewPage from '../features/schemes/CalculationPreviewPage.jsx';
 import GroupFormPage from '../features/schemes/GroupFormPage.jsx';
 import GroupDetailPage from '../features/schemes/GroupDetailPage.jsx';
 import ApprovalsPage from '../features/approvals/ApprovalsPage.jsx';
@@ -107,6 +108,7 @@ export default function App() {
             <Route path="new" element={<SchemeFormPage />} />
             <Route path=":schemeId/versions/:versionId/edit" element={<SchemeFormPage />} />
             <Route path=":id" element={<SchemeDetailPage />} />
+            <Route path="calculations" element={<CalculationPreviewPage />} />
             <Route path="groups" element={<GroupsPage />} />
             <Route path="groups/new" element={<GroupFormPage />} />
             <Route path="groups/:id" element={<GroupDetailPage />} />

@@ -7,7 +7,7 @@ export const rolePermissions: Record<Role, Permission[]> = {
   OPS_HEAD: [
     'lead:view', 'customer:view', 'kyc:view', 'application:view', 'application:approve', 'audit:view',
     'scheme:view', 'scheme:approve', 'scheme:publish', 'scheme:retire',
-    'group:view', 'group:approve', 'group:suspend', 'approval:view',
+    'group:view', 'group:approve', 'group:open-enrolment', 'group:suspend', 'approval:view',
     'instalment:view', 'payment:view', 'receipt:view', 'reconcile:view', 'accounting:view',
     'auction:view', 'auction:approve', 'dispute:resolve', 'payout:view', 'payout:hold', 'support:view',
   ],
@@ -99,7 +99,8 @@ export const schemeVersionTransitions: Record<string, string[]> = {
 
 export const groupTransitions: Record<string, string[]> = {
   DRAFT: ['APPROVAL_PENDING'],
-  APPROVAL_PENDING: ['ENROLMENT_OPEN', 'DRAFT', 'CLOSED'],
+  APPROVAL_PENDING: ['APPROVED', 'DRAFT', 'CLOSED'],
+  APPROVED: ['ENROLMENT_OPEN', 'CLOSED'],
   ENROLMENT_OPEN: ['READY_TO_START'],
   READY_TO_START: ['ACTIVE', 'ENROLMENT_OPEN'],
   ACTIVE: ['SUSPENDED', 'COMPLETED'],

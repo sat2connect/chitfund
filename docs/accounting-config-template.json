@@ -1,0 +1,81 @@
+{
+  "_status": "UNAPPROVED PROPOSAL. No accountant has validated this. Every value marked null must be supplied by the accountant. Do not load this file into a production system until it is complete and signed off.",
+  "_note": "This template only shows the SHAPE the system accepts (see pilot-config.example.json for a runnable example, which is also NOT an approved chart). No account code, mapping, tax treatment or recognition rule has been invented here.",
+
+  "accountantApproval": {
+    "approvedBy": null,
+    "approvedOn": null,
+    "reference": null
+  },
+
+  "chartOfAccounts": {
+    "_instructions": "One entry per account. type is one of ASSET, LIABILITY, EQUITY, INCOME, EXPENSE. parentCode groups accounts and must refer to another code in this list. The system records the parent but reports do not roll up by it yet.",
+    "accounts": [
+      { "code": null, "name": null, "type": null, "parentCode": null, "active": true }
+    ]
+  },
+
+  "postingRules": {
+    "_instructions": "Which account is debited when money arrives by each mode, and which is credited. These are accounting decisions: see questions 5 to 13.",
+    "collection": {
+      "debitAccountCodeByPaymentMode": { "CASH": null, "CHEQUE": null, "UPI": null, "BANK_TRANSFER": null, "ONLINE_SIMULATED": null },
+      "creditAccountCode": null
+    },
+    "payout": {
+      "debitAccountCode": null,
+      "creditAccountCodeByChannel": { "BANK_TRANSFER": null, "CHEQUE": null }
+    },
+    "dividend": { "status": "NOT IMPLEMENTED: accounting treatment not supplied", "treatment": null },
+    "commission": { "status": "NOT IMPLEMENTED: accounting treatment not supplied", "treatment": null },
+    "lateFees": { "status": "NOT IMPLEMENTED: legal permission and treatment not supplied", "treatment": null },
+    "tax": { "status": "NOT IMPLEMENTED: no tax is calculated", "treatment": null }
+  },
+
+  "recognitionRules": {
+    "_instructions": "Written description of when each item is recognised (see questions 5 to 11). Free text for now.",
+    "subscriptions": null,
+    "prizePayable": null,
+    "dividend": null,
+    "commission": null,
+    "defaultsAndProvisions": null
+  },
+
+  "fiscalCalendar": {
+    "_instructions": "The first day of the financial year and the number of periods. The system currently creates monthly periods from startDate.",
+    "startDate": null,
+    "months": null
+  },
+
+  "periodPolicy": {
+    "closeAuthority": null,
+    "reopenAuthority": null,
+    "reopenMaximumDays": null,
+    "preconditionsToClose": null,
+    "backDatingLimitDays": null
+  },
+
+  "journalPolicy": {
+    "approvalLimits": [{ "role": null, "maximumAmountPaise": null }],
+    "supportingDocumentRequiredFor": null,
+    "correctionMethod": "REVERSAL_ONLY (current system behaviour; confirm whether adjusting entries are also allowed)",
+    "reasonCodes": null
+  },
+
+  "reconciliationPolicy": {
+    "bankAccounts": [{ "name": null, "accountCode": null, "statementFormat": null }],
+    "matchTolerancePaise": null,
+    "dateWindowDays": null,
+    "exceptionDeadlineDays": null
+  },
+
+  "reporting": {
+    "requiredStatements": null,
+    "statutoryReturns": null,
+    "recordRetentionYears": null
+  },
+
+  "settings": {
+    "_instructions": "Global overdue placeholder used only when a scheme sets no grace days of its own. The real rules are entered per scheme.",
+    "graceDays": null
+  }
+}

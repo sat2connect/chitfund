@@ -35,7 +35,7 @@ describe('migrations', () => {
   it('applies all migrations once and is a no-op the second time', async () => {
     const second = await migrate(db);
     expect(second.applied).toEqual([]);
-    expect(second.alreadyApplied).toEqual(['001_core.sql', '002_auth.sql']);
+    expect(second.alreadyApplied).toEqual(['001_core.sql', '002_auth.sql', '003_group_approved_state.sql']);
     const tables = (await db.query<{ n: string }>(`select table_name n from information_schema.tables where table_schema='public'`)).rows.map((r) => r.n);
     expect(tables).toEqual(expect.arrayContaining(['journals', 'journal_lines', 'audit_log', 'bids', 'sessions', 'user_credentials', 'schema_migrations']));
   });

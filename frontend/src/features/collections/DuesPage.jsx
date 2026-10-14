@@ -52,11 +52,23 @@ export default function DuesPage() {
           { key: 'ticketNo', header: 'Ticket', render: (r) => `#${r.ticketNo}` },
           { key: 'customerName', header: 'Member', render: (r) => <Link className="text-brand-700 hover:underline" to={`/crm/customers/${r.customerId}`}>{r.customerName}</Link> },
           { key: 'seq', header: 'No.', render: (r) => `${r.seq}` },
-          { key: 'dueDate', header: 'Due date' },
+          {
+            key: 'dueDate', header: 'Due date',
+            render: (r) => (r.effectiveDueDate !== r.dueDate ? <>{r.effectiveDueDate}<br /><span className="text-xs text-muted">moved from {r.dueDate}</span></> : r.dueDate),
+          },
           { key: 'amountPaise', header: 'Amount', render: (r) => formatPaise(r.amountPaise) },
           { key: 'paidPaise', header: 'Paid', render: (r) => formatPaise(r.paidPaise) },
           { key: 'outstandingPaise', header: 'Outstanding', render: (r) => formatPaise(r.outstandingPaise) },
-          { key: 'status', header: 'Status', render: (r) => <Status value={r.status} /> },
+          {
+            key: 'status', header: 'Status',
+            render: (r) => (
+              <>
+                <Status value={r.status} />
+                {r.paidLate && <span className="mt-1 block text-xs text-amber-700">Paid late ({r.settledOn})</span>}
+                {r.policyStatus === 'UNAPPROVED' && r.status === 'OVERDUE' && <span className="mt-1 block text-xs text-muted">Rule unapproved</span>}
+              </>
+            ),
+          },
           {
             key: 'a', header: '',
             render: (r) => (can('collection:record') && r.outstandingPaise > 0 && r.status !== 'SCHEDULED'

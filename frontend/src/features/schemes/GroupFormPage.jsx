@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../app/AuthContext.jsx';
 import { Button, Card, PageHeader } from '../../components/common/ui.jsx';
 import { Banner, EmptyState, ErrorState, LoadingState } from '../../components/feedback/States.jsx';
-import { SelectField, TextField, useUnsavedWarning } from '../../components/forms/controls.jsx';
+import { SelectField, TextAreaField, TextField, useUnsavedWarning } from '../../components/forms/controls.jsx';
 import { useApi } from '../../hooks/useApi.js';
 import { getMeta } from '../crm/crmService.js';
 import { createGroup, listPublishedVersions } from './schemeService.js';
@@ -13,7 +13,7 @@ export default function GroupFormPage() {
   const navigate = useNavigate();
   const versions = useApi(listPublishedVersions);
   const meta = useApi(getMeta);
-  const [form, setForm] = useState({ code: '', name: '', schemeVersionId: '', branchId: user?.branchIds?.length === 1 ? user.branchIds[0] : '', plannedStartDate: '' });
+  const [form, setForm] = useState({ code: '', name: '', schemeVersionId: '', branchId: user?.branchIds?.length === 1 ? user.branchIds[0] : '', plannedStartDate: '', enrolmentStartDate: '', enrolmentEndDate: '', auctionSchedule: '' });
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -39,7 +39,13 @@ export default function GroupFormPage() {
     setBusy(true);
     setError(null);
     try {
-      const g = await createGroup(form);
+      const { enrolmentStartDate, enrolmentEndDate, auctionSchedule, ...base } = form;
+      const g = await createGroup({
+        ...base,
+        ...(enrolmentStartDate ? { enrolmentStartDate } : {}),
+        ...(enrolmentEndDate ? { enrolmentEndDate } : {}),
+        ...(auctionSchedule.trim() ? { auctionSchedule: auctionSchedule.split('\n').map((x) => x.trim()).filter(Boolean) } : {}),
+      });
       setDirty(false);
       navigate(`/schemes/groups/${g.id}`, { replace: true });
     } catch (x) {
@@ -60,9 +66,14 @@ export default function GroupFormPage() {
             <TextField label="Group name" required value={form.name} onChange={change('name')} error={fe.name} />
             <SelectField label="Scheme version" required placeholder="Select published version" value={form.schemeVersionId} onChange={change('schemeVersionId')} error={fe.schemeVersionId} options={versions.data.items.map((v) => ({ value: v.id, label: v.label }))} />
             <SelectField label="Branch" required placeholder="Select branch" value={form.branchId} onChange={change('branchId')} error={fe.branchId} options={branches.map((b) => ({ value: b.id, label: b.name }))} />
-            <TextField label="Planned start date" type="date" required value={form.plannedStartDate} onChange={change('plannedStartDate')} error={fe.plannedStartDate}
+            <TextField label="Commencement date (planned start)" type="date" required value={form.plannedStartDate} onChange={change('plannedStartDate')} error={fe.plannedStartDate}
               hint={chosen ? `Scheme effective ${chosen.config.effectiveFrom} to ${chosen.config.effectiveTo ?? 'open'}` : undefined} />
+            <TextField label="Enrolment start date" type="date" value={form.enrolmentStartDate} onChange={change('enrolmentStartDate')} error={fe.enrolmentStartDate} hint="Optional. Enrolment cannot open earlier." />
+            <TextField label="Enrolment end date" type="date" value={form.enrolmentEndDate} onChange={change('enrolmentEndDate')} error={fe.enrolmentEndDate} hint="Optional. Tickets cannot be allocated after it." />
           </div>
+          <TextAreaField label="Auction schedule (one date per line, YYYY-MM-DD)" value={form.auctionSchedule} onChange={change('auctionSchedule')} error={fe.auctionSchedule}
+            hint="Optional planning dates, one per instalment cycle in increasing order. Unapproved until the business confirms the auction rules." />
+          <Banner tone="info">The instalment schedule is generated from the commencement date by a provisional monthly rule and is unapproved until the business confirms its due-date rules.</Banner>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => navigate('/schemes/groups')}>Cancel</Button>
             <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Create group'}</Button>

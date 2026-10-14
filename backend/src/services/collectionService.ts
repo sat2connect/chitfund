@@ -1,5 +1,5 @@
 import { PAYMENT_MODES } from '../domain/rules.js';
-import type { Allocation, Payment, PaymentAttempt, PaymentMode, User } from '../domain/types.js';
+import type { Allocation, Instalment, InstalmentStatus, Payment, PaymentAttempt, PaymentMode, User } from '../domain/types.js';
 import { badRequest, conflict, forbidden, notFound } from '../errors/AppError.js';
 import { assertBranch, canAccessBranch } from '../policies/access.js';
 import type { Store } from '../repositories/store.js';
@@ -61,6 +61,15 @@ export const createCollectionService = (
     return out;
   };
 
+  /**
+   * An instalment's status is derived, so it is recomputed by itself whenever its paid amount changes. This leaves the
+   * audit trail: what it was, what it is now, and which payment (with which effective receipt date) caused it.
+   */
+  const recordRecompute = (u: User, inst: Instalment, before: InstalmentStatus, why: { paymentId: string; cause: string; effectiveReceiptDate: string }) => {
+    const after = instalments.statusOf(inst);
+    if (before !== after) audit(s, u, 'instalment.status_recomputed', 'instalment', inst.id, { from: before, to: after, paidPaise: inst.paidPaise, ...why });
+  };
+
   /** Creates the confirmed payment, receipt, allocations and journal together; nothing is changed if validation fails. */
   const confirmPayment = (u: User, p: {
     customerId: string; mode: PaymentMode; amountPaise: number; reference?: string; receivedDate: string; instalmentIds?: string[];
@@ -89,8 +98,11 @@ export const createCollectionService = (
     s.payments.push(payment);
     s.receipts.push({ id: receiptId, paymentId, customerId: p.customerId, branchId, amountPaise: p.amountPaise, issuedAt: s.now().toISOString(), status: 'ISSUED' });
     for (const a of allocs) {
+      const inst = instalments.byId(a.instalmentId)!;
+      const before = instalments.statusOf(inst);
       s.allocations.push({ id: s.nextId('ALC'), paymentId, instalmentId: a.instalmentId, amountPaise: a.amountPaise, status: 'ACTIVE' });
-      instalments.byId(a.instalmentId)!.paidPaise += a.amountPaise;
+      inst.paidPaise += a.amountPaise;
+      recordRecompute(u, inst, before, { paymentId, cause: 'PAYMENT_CONFIRMED', effectiveReceiptDate: p.receivedDate });
     }
     logActivity(s, u, 'customer', p.customerId, 'PAYMENT', `Payment ${paymentId} of ${p.amountPaise / 100} INR received (${p.mode}${p.simulated ? ', simulated' : ''}); receipt ${receiptId}`);
     audit(s, u, 'payment.confirm', 'payment', paymentId, { mode: p.mode, amountPaise: p.amountPaise, simulated: p.simulated });
@@ -105,8 +117,11 @@ export const createCollectionService = (
     const journal = s.journals.find((j) => j.id === pay.journalId)!;
     accounting.reverseJournal(u, journal, pay.reversalReason ?? 'Payment reversed', 'PAYMENT_REVERSAL', pay.id);
     for (const a of s.allocations.filter((x) => x.paymentId === pay.id && x.status === 'ACTIVE')) {
+      const inst = instalments.byId(a.instalmentId)!;
+      const before = instalments.statusOf(inst);
       a.status = 'REVERSED';
-      instalments.byId(a.instalmentId)!.paidPaise -= a.amountPaise;
+      inst.paidPaise -= a.amountPaise;
+      recordRecompute(u, inst, before, { paymentId: pay.id, cause: 'PAYMENT_REVERSED', effectiveReceiptDate: pay.receivedDate });
     }
     const r = s.receipts.find((x) => x.id === pay.receiptId);
     if (r) r.status = 'VOID';
@@ -228,6 +243,9 @@ export const createCollectionService = (
       const c = new Check(body);
       const eventId = c.str('eventId', { required: true, min: 4, max: 100 });
       const outcome = c.oneOf('outcome', ['SUCCESS', 'FAILURE'] as const);
+      // Effective receipt date as reported by the provider; a late confirmation may carry an earlier date than today.
+      const effectiveDate = c.date('effectiveDate');
+      if (effectiveDate && effectiveDate > s.today()) c.errors.effectiveDate = 'Effective date cannot be in the future';
       c.done();
       if (a.callbacks.some((cb) => cb.eventId === eventId)) {
         return { attempt: a, payment: a.paymentId ? presentPayment(getPayment(a.paymentId)) : null, duplicate: true }; // replay: no side effects
@@ -243,7 +261,7 @@ export const createCollectionService = (
         return { attempt: a, payment: null, duplicate: false };
       }
       const payment = confirmPayment(u, {
-        customerId: a.customerId, mode: 'ONLINE_SIMULATED', amountPaise: a.amountPaise, reference: a.providerRef, receivedDate: s.today(),
+        customerId: a.customerId, mode: 'ONLINE_SIMULATED', amountPaise: a.amountPaise, reference: a.providerRef, receivedDate: effectiveDate ?? s.today(),
         instalmentIds: a.instalmentIds, simulated: true, attemptId: a.id,
       });
       a.callbacks.push({ eventId: eventId!, outcome: 'SUCCESS', at: s.now().toISOString(), applied: true });

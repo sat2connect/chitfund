@@ -63,6 +63,7 @@ async function activeGroup() {
   await maker.post(`/groups/${g.body.id}/submit`);
   const open = (await head.get('/approvals?scope=queue&type=GROUP_OPEN')).body.items[0];
   await head.post(`/approvals/${open.id}/decision`, { decision: 'APPROVED' });
+  await head.post(`/groups/${g.body.id}/open-enrolment`);
   const c1 = await verifiedCustomer('9777777771');
   const c2 = await verifiedCustomer('9777777772');
   await maker.post(`/groups/${g.body.id}/tickets`, { customerId: c1 });

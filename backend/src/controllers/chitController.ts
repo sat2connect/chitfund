@@ -1,5 +1,6 @@
 import type { Request, RequestHandler } from 'express';
 import type { ApprovalService } from '../services/approvalService.js';
+import type { CalculationService } from '../services/calculationService.js';
 import type { GroupService } from '../services/groupService.js';
 import type { SchemeService } from '../services/schemeService.js';
 
@@ -8,7 +9,7 @@ const query = (r: Request) => r.query as Record<string, unknown>;
 const id = (r: Request) => String(r.params.id);
 const h = (fn: RequestHandler): RequestHandler => fn;
 
-export const createChitController = (schemes: SchemeService, groups: GroupService, approvals: ApprovalService) => ({
+export const createChitController = (schemes: SchemeService, groups: GroupService, approvals: ApprovalService, calc: CalculationService) => ({
   schemeMeta: h((_req, res) => res.json(schemes.meta())),
   listSchemes: h((req, res) => res.json(schemes.list(req.user!, query(req)))),
   getScheme: h((req, res) => res.json(schemes.get(req.user!, id(req)))),
@@ -30,6 +31,10 @@ export const createChitController = (schemes: SchemeService, groups: GroupServic
   allocate: h((req, res) => res.json(groups.allocate(req.user!, id(req), body(req)))),
   release: h((req, res) => res.json(groups.release(req.user!, id(req), Number(req.params.ticketNo), body(req)))),
   attest: h((req, res) => res.json(groups.attest(req.user!, id(req), String(req.params.itemId), body(req)))),
+  openEnrolment: h((req, res) => res.json(groups.openEnrolment(req.user!, id(req)))),
+  addDocument: h((req, res) => res.status(201).json(groups.addDocument(req.user!, id(req), body(req)))),
+  calcRules: h((_req, res) => res.json(calc.rules())),
+  calcPreview: h((req, res) => res.json(calc.preview(body(req)))),
   markReady: h((req, res) => res.json(groups.markReady(req.user!, id(req)))),
   reopen: h((req, res) => res.json(groups.reopen(req.user!, id(req)))),
   requestActivation: h((req, res) => res.json(groups.requestActivation(req.user!, id(req)))),

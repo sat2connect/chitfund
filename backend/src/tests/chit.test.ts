@@ -61,6 +61,7 @@ async function openGroup(versionId: string) {
   await ops.post(`/groups/${g.body.id}/submit`);
   const req = (await head.get('/approvals?scope=queue&type=GROUP_OPEN')).body.items[0];
   await head.post(`/approvals/${req.id}/decision`, { decision: 'APPROVED' });
+  await head.post(`/groups/${g.body.id}/open-enrolment`);
   return g.body.id as string;
 }
 
@@ -183,6 +184,7 @@ describe('groups', () => {
     await ops.post(`/groups/${g.body.id}/submit`);
     const req = (await head.get('/approvals?scope=queue')).body.items.find((r: { entityType: string }) => r.entityType === 'GROUP_OPEN');
     await head.post(`/approvals/${req.id}/decision`, { decision: 'APPROVED' });
+    await head.post(`/groups/${g.body.id}/open-enrolment`);
     // seeded customer has no KYC
     const res = await ops.post(`/groups/${g.body.id}/tickets`, { customerId: 'CU-0001' });
     expect(res.status).toBe(409);

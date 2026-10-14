@@ -22,6 +22,7 @@ export function SchemesLayout() {
         items={[
           ...(can('scheme:view') ? [{ to: '/schemes', label: 'Scheme catalogue' }] : []),
           ...(can('group:view') ? [{ to: '/schemes/groups', label: 'Chit groups' }] : []),
+          ...(can('scheme:view') ? [{ to: '/schemes/calculations', label: 'Calculation rules' }] : []),
         ]}
       />
       <Outlet />

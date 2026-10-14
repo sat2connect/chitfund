@@ -42,9 +42,10 @@ export const staff = (app: Express) => ({
 });
 export type Staff = ReturnType<typeof staff>;
 
-export const SCHEME = (code = 'SCH-X') => ({
+export const SCHEME = (code = 'SCH-X', extra: Record<string, unknown> = {}) => ({
   code,
   config: {
+    ...extra,
     name: 'Scenario Scheme', jurisdiction: 'TAMIL_NADU', chitValuePaise: 30000000, memberCount: 3, installmentAmountPaise: 10000000,
     frequency: 'MONTHLY', tenureMonths: 3, auction: { mode: 'MEMBER_BIDS', minBidPaise: 100000, maxBidPaise: 5000000, bidIncrementPaise: 100000 },
     requiredDocuments: ['Prize claim form'], complianceChecklist: ['Chit agreement executed'], effectiveFrom: '2026-01-01',
@@ -65,8 +66,8 @@ export async function verifiedCustomer(s: Staff, phone: string) {
   return cid;
 }
 
-export async function publishedScheme(s: Staff, code = 'SCH-X') {
-  const created = await s.maker.post('/schemes', SCHEME(code));
+export async function publishedScheme(s: Staff, code = 'SCH-X', extra: Record<string, unknown> = {}) {
+  const created = await s.maker.post('/schemes', SCHEME(code, extra));
   const vId = created.body.version.id as string;
   const rid = (await s.maker.post(`/scheme-versions/${vId}/submit`)).body.request.id;
   await s.head.post(`/approvals/${rid}/start-review`);
@@ -76,12 +77,13 @@ export async function publishedScheme(s: Staff, code = 'SCH-X') {
 }
 
 /** Builds an ACTIVE group of three verified members whose first instalment is due 2026-12-01. */
-export async function activeGroup(app: Express, s: Staff, opts: { code?: string; phones?: string[] } = {}) {
-  const { versionId } = await publishedScheme(s, opts.code ? `S-${opts.code}` : 'SCH-X');
+export async function activeGroup(app: Express, s: Staff, opts: { code?: string; phones?: string[]; config?: Record<string, unknown> } = {}) {
+  const { versionId } = await publishedScheme(s, opts.code ? `S-${opts.code}` : 'SCH-X', opts.config);
   const g = await s.maker.post('/groups', { code: opts.code ?? 'GRP-X', name: 'Scenario Group', schemeVersionId: versionId, branchId: 'CHN', plannedStartDate: '2026-12-01' });
   await s.maker.post(`/groups/${g.body.id}/submit`);
   const open = (await s.head.get('/approvals?scope=queue&type=GROUP_OPEN')).body.items[0];
   await s.head.post(`/approvals/${open.id}/decision`, { decision: 'APPROVED' });
+  await s.head.post(`/groups/${g.body.id}/open-enrolment`);
   const phones = opts.phones ?? ['9555000001', '9555000002', '9555000003'];
   const cs: string[] = [];
   for (const p of phones) cs.push(await verifiedCustomer(s, p));

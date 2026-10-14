@@ -19,10 +19,14 @@ export const getGroup = (id, signal) => apiRequest(`/groups/${id}`, { signal });
 export const createGroup = (body) => post('/groups', body);
 export const updateGroup = (id, body) => apiRequest(`/groups/${id}`, { method: 'PUT', body });
 export const groupAction = (id, action, body) => post(`/groups/${id}/${action}`, body);
-export const allocateTicket = (id, body) => post(`/groups/${id}/tickets`, body);
+export const addGroupDocument = (id, body) => post(`/groups/${id}/documents`, body);
+export const allocateTicket =(id, body) => post(`/groups/${id}/tickets`, body);
 export const releaseTicket = (id, no, body) => post(`/groups/${id}/tickets/${no}/release`, body);
 export const confirmChecklistItem = (id, itemId, body) => post(`/groups/${id}/checklist/${itemId}/confirm`, body);
 
-export const listApprovals = (p, signal) => apiRequest(`/approvals${toQuery(p)}`, { signal });
+export const getCalculationRules = (signal) => apiRequest('/calculations/rules', { signal });
+export const previewCalculation = (body) => post('/calculations/preview', body);
+
+export const listApprovals =(p, signal) => apiRequest(`/approvals${toQuery(p)}`, { signal });
 export const startApprovalReview = (id) => post(`/approvals/${id}/start-review`);
 export const decideApproval = (id, body) => post(`/approvals/${id}/decision`, body);
